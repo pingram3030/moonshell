@@ -7,7 +7,7 @@ export MOON_FILE=false
 
 source $(dirname $0)/../moon.sh
 
-usage () {
+if [[ $# -lt 1 ]]; then
     echoerr "Deregister AMIs in the currently set account."
     echoerr "Usage: $(basename $0) all|ROLE [AMI_TO_EXCLUDE AMI AMI]"
     echoerr
@@ -15,10 +15,6 @@ usage () {
     echoerr " * ROLE is the value of the 'role' tag set on the AMI by Packer"
     echoerr " * ROLE must be quoted if it contains spaces"
     echoerr " * This script is designed for automated operation, it must be cancelled manually"
-}
-
-if [[ $# -lt 1 ]]; then
-    usage
     exit
 else
     ROLE=$1
@@ -26,20 +22,26 @@ else
     EXCLUDE=(${@-})
 fi
 
+TIMEOUT=5
+
 [[ ${ROLE} == "all" ]] \
     && AMIS=($(ami_list_all)) \
     || AMIS=($(ami_list_role "${ROLE}"))
 
-if [[ ${EXCLUDE[@]-} ]]; then
-    for exclude in ${EXCLUDE[@]-}; do
-        if [[ ${exclude} =~ ^ami-[0-9a-f]+$ ]]; then
-            echoerr "INFO: Excluding AMI: ${exclude}"
-            AMIS=(${AMIS[@]/$exclude/})
-        else
-            echoerr "WARNING: Ignoring invalid AMI: ${exclude}"
-        fi
-    done
+if [[ ! ${ROLE} == build ]]; then
+    echoerr "INFO: Finding 'build' AMIs for exclusion"
+    BUILD_AMIS=($(ami_list_role build))
+    EXCLUDE+=(${BUILD_AMIS[@]})
 fi
+
+for exclude in ${EXCLUDE[@]-}; do
+    if [[ ${exclude} =~ ^ami-[0-9a-f]+$ ]]; then
+        echoerr "INFO: Excluding AMI: ${exclude}"
+        AMIS=(${AMIS[@]/$exclude/})
+    else
+        echoerr "WARNING: Ignoring invalid AMI: ${exclude}"
+    fi
+done
 
 if [[ ${AMIS[@]-} ]]; then
     for ami in ${AMIS[@]}; do
@@ -49,7 +51,7 @@ if [[ ${AMIS[@]-} ]]; then
             echoerr "instances=(${instances[@]})"
         else
             echoerr "INFO: No instances are running from ${ami}"
-            ami_deregister ${ami}
+            ami_deregister ${ami} ${TIMEOUT}
         fi
     done
 else

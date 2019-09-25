@@ -27,21 +27,52 @@ ami_describe () {
 ami_deregister () {
     # Deregisters an ${ami_id} and its associated EBS ${snapshot_id}
     local ami_id=$1
+    local wait=${2-7}
 
-    local wait=7
+    local account_id=$(sts_account_id)
 
     echoerr "INFO: Finding snapshot for ${ami_id}"
     local snapshot_id=$(aws ec2 describe-snapshots \
         --region ${AWS_REGION} \
+        --owner-ids ${account_id} \
         --query "Snapshots[?contains(Description, '${ami_id}')].SnapshotId" \
         --output text)
 
     echoerr "WARNING: Deleting ${ami_id} and ${snapshot_id} in ${wait} seconds. Ctrl-C to cancel"
     sleep ${wait}
 
-    aws ec2 deregister-image --region ${AWS_REGION} --image-id ${ami_id} \
-        && aws ec2 delete-snapshot --region ${AWS_REGION} --snapshot-id ${snapshot_id} \
-        || echoerr "ERROR: Failed to deregister ${ami_id}. ${snapshot_id} is preserved"
+    ami_deregister_image ${ami_id}
+    ami_deregister_snapshot ${snapshot_id}
+}
+
+ami_deregister_image () {
+    local ami_id=$1
+
+    aws ec2 deregister-image \
+        --region ${AWS_REGION} \
+        --image-id ${ami_id}
+
+    if [[ $? -gt 0 ]]; then
+        echoerr "ERROR: Failed to deregister image '${ami_id}'"
+        return 1
+    fi
+
+    return 0
+}
+
+ami_deregister_snapshot () {
+    local snapshot_id=$1
+
+    aws ec2 delete-snapshot \
+        --region ${AWS_REGION} \
+        --snapshot-id ${snapshot_id}
+
+    if [[ $? -gt 0 ]]; then
+        echoerr "ERROR: Failed to delete snapshot '${snapshot_id}'"
+        return 1
+    fi
+
+    return 0
 }
 
 ami_export () {
