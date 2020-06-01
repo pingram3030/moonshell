@@ -57,6 +57,49 @@ stack_name_from_vpc_id () {
     fi
 }
 
+stack_parameter_file () {
+    local environment=$1
+    echo "params/${environment}.sh"
+}
+
+stack_parameter_file_convert () {
+    local environment=$1
+
+    local yaml_file="moonshot/params/${environment}.yml"
+    local param_file="$(stack_parameter_file ${environment})"
+
+    # TODO Remove this after moonshot is gone
+    # This is dirty if the source yaml file contains anything other than key
+    # value pairs, but for us, this is not a thing, so should be fine, right?
+    if [[ -f ${yaml_file} ]] && [[ ! -f ${param_file} ]]; then
+        echoerr "INFO: Converting '${yaml_file}'"
+        mkdir -p params
+        sed \
+            -e '/---/d' \
+            -e "s/'//g" \
+            -e 's/^\([a-zA-Z0-9]*\):[ ]*/\1\="/g' \
+            -e 's/$/"/g' \
+            ${yaml_file} >${param_file}
+    fi
+}
+
+stack_parameter_file_parse () {
+    local param_file=$1
+    local param_var=$2
+
+    if ! typeset -Ap ${param_var} >&/dev/null; then
+        echoerr "ERROR: '${param_var}' is not an associative array"
+        return 1
+    fi
+
+    local line param_key param_value
+    while read line; do
+        param_key=${line%%=*}
+        param_value=${line#*=}
+        eval ${param_var}[${param_key}]=${param_value}
+    done <${param_file}
+}
+
 stack_parameter_set () {
     local stack_name=$1
     local parameter_key=$2
