@@ -44,6 +44,9 @@ Everything starts with `./moon.sh`. When sourced it:
 
 ### Setup
 
+As the parent project, Moonshot, has been abandoned by its original authors the
+following steps to install Ruby things will soon become deprecated.
+
 ```
 bundle install
 ```
@@ -65,11 +68,11 @@ source ${HOME}/tools/moonshell/moon.sh
 
 ## Usage
 
-The majority of Moonshell's functionality relies upon `Moonfile.rb`, Moonshot's
-main configuration file. We read `Moonfile.rb` and programatically set
-`APP_NAME`, which must conform to `^[a-zA-Z0-9_]*$` and which in turn is
-concatenated with the `ENVIRONMENT` name, to create the `STACK_NAME` set by every
-`bin/` script:
+The majority of Moonshell's functionality relies upon a 'moon file' which is in
+preference order `.moon.sh` or  `Moonfile.rb` in the CWD. We read the moon file
+and programatically set `APP_NAME`, which must conform to `^[a-zA-Z0-9_]*$` and
+which in turn is concatenated with the `ENVIRONMENT` name, to create the
+`STACK_NAME` set by every `bin/` script:
 
 * `STACK_NAME="${APP_NAME}-${ENVIRONMENT}"`
 
@@ -135,9 +138,9 @@ Moonshell tries to adhere to Linux FHS best practice:
 
 * etc/
 
-  * completion.d/ - Bash completion functions suffixed with `.sh`
+    * completion.d/ - Bash completion functions suffixed with `.sh`
 
-  * profile.d/ - Definitions of variables and other statically set things
+    * profile.d/ - Definitions of variables and other statically set things
 
 * usr/ - Extra supporting files for applications
 
@@ -146,10 +149,11 @@ Moonshell tries to adhere to Linux FHS best practice:
 ## Why
 
 A lot of the functionality herein should ideally be ported to Moonshot, but, at
-the time of writing these tools, using Ruby to develop solutions to our needs
-is an expense we can't afford. We are working through the process of developing
-out several systems that all interract with each other on some level; the scope
-and functionality is being found out as development happens.
+the time of writing these tools Moonshot has been abandoned by its original
+author and using Ruby to develop solutions to our needs is an expense we can't
+afford. We are working through the process of developing out several systems
+that all interract with each other on some level; the scope and functionality
+is being found out as development happens.
 
 Bash was the quickest and easiest way to create re-usable code that runs on all
 systems regardless of all external dependencies, with exception of `aws-cli`,
@@ -246,6 +250,44 @@ CloudFormation Defaults:
   use it to find the VPCId from the stack's name when other methods aren't
   available.
 
+### Code Deploy
+
+Per stack there must only be one Code Deploy application. We tar ball the
+`codedeploy/` directory and upload it to `codedeploy/` in the stack's local s3
+bucket. All nodes which are to deploy the artefact must have read access to
+that location, and the host buliding the artefact must be able to write to it.
+
+Inside of the `codedeploy/` directory you must have an `appspec.yml` file per:
+https://docs.aws.amazon.com/codedeploy/latest/userguide/reference-appspec-file.html#appspec-reference-server
+
+Example S3 IAM policy written in YAML
+
+```
+  ArtefactS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ArtefactS3IAMPolicy
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - Fn::GetAtt:
+                - ArtefactS3Bucket
+                - Arn
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - Fn::Join:
+                - ''
+                - - Fn::GetAtt:
+                    - ArtefactS3Bucket
+                    - Arn
+                  - '/codedeploy/*'
+```
+
 ### KMS
 
 We strongly advise the use of KMS to encrypt all data at rest. You can use KMS
@@ -265,6 +307,9 @@ To view all available KMS keys for your account:
 ```
 aws kms list-aliases
 ```
+
+* NOTE: You should specify a KMS key as the key UUID and not the alias, this is
+because IAM policy can only be set on a key's UUID.
 
 ### SSH with a Jump Host / Bastion
 

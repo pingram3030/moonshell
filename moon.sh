@@ -111,7 +111,6 @@ if [[ ! $(basename "x$0") =~ "bash"$ ]]; then
     # we appropriate it here. We make the assumption that your bastion hosts,
     # as defined in ~/.ssh/config, follow the naming convention of
     # "bastion-${AWS_ACCOUNT_NAME}"
-    #
     [[ -z ${AWS_ACCOUNT_NAME-} ]] \
         && echoerr "ERROR: 'AWS_ACCOUNT_NAME' is unset." \
         && exit 1
@@ -122,23 +121,33 @@ if [[ ! $(basename "x$0") =~ "bash"$ ]]; then
         && export AWS_REGION="ap-southeast-2"
 
     # Most scripts in bin/ build off of ${APP_NAME} which is programatically
-    # set from `Moonfile.rb` below. For those that don't need APP_NAME, i.e.
-    # can be run from anywhere in the filesystem, they can export ${MOON_FILE}
-    # as false and bypass this failure mode.
-    if [[ ! -f ${PWD}/Moonfile.rb ]]; then
-        if [[ ! ${MOON_FILE-} == false ]]; then
-            echoerr "ERROR: Moonfile.rb is not present in CWD"
+    # set below. For those that don't need APP_NAME, i.e. can be run from
+    # anywhere in the filesystem, they can export ${MOON_FILE} as false and
+    # bypass this failure mode.
+    #
+    # We only support an APP_NAME which does not contain hyphens. We make
+    # this assumption to simplify code and deliberately choose one side of
+    # the fence; Mea culpa.
+    if [[ ${MOON_FILE-} == false ]]; then
+        # Nothing to see here
+        true
+    elif [[ -f ${PWD}/.moon.sh ]]; then
+        source ${PWD}/.moon.sh
+        if [[ ! ${APP_NAME} =~ ^[a-z0-9A-Z_]*$ ]]; then
+            echoerr "ERROR: APP_NAME may only contain alpha-numeric characters and underscores"
             exit 1
         fi
-    else
-        # We only support an app_name that does not contain hyphens. We make
-        # this assumption to simplify code and deliberately choose one side of
-        # the fence; Mea culpa.
+        export APP_NAME
+    # TODO Remove Moonfile.rb once fully deprecated
+    elif [[ -f ${PWD}/Moonfile.rb ]]; then
         export APP_NAME=$(grep app_name Moonfile.rb | tr -d "'" | awk '{print $NF}')
         if [[ ! ${APP_NAME} =~ ^[a-z0-9A-Z_]*$ ]]; then
             echoerr "ERROR: APP_NAME may only contain alpha-numeric characters and underscores"
             exit 1
         fi
+    else
+        echoerr "ERROR: Moonfile is not present in '${PWD}'"
+        exit 1
     fi
 
     # Source the rest of the things!!!

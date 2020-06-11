@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#
+#
+#
+
+source $(dirname $0)/../moon.sh
+
+if [[ $# -lt 1 ]]; then
+    echoerr "Usage: $(basename $0) ENVIRONMENT"
+    exit
+else
+    export ENVIRONMENT=$1
+fi
+
+STACK_NAME="${APP_NAME}-${ENVIRONMENT}"
+
+stack_parameter_file_convert ${ENVIRONMENT}
+
+declare -A PARAMS
+
+PARAM_FILE=$(stack_parameter_file ${ENVIRONMENT})
+
+stack_parameter_file_convert ${ENVIRONMENT}
+
+echoerr "INFO: Gathering existing parameters"
+STACK_PARAMETERS=($(aws cloudformation get-template-summary \
+    --region ${AWS_REGION} \
+    --stack-name ${STACK_NAME}  \
+    | jq -r '.Parameters[].ParameterKey'))
+
+if [[ ${PARAM_FILE} ]]; then
+    echoerr "INFO: Parsing ${PARAM_FILE}"
+    stack_parameter_file_parse ${PARAM_FILE} PARAMS
+fi
+
+echoerr "INFO: Parsing parameters"
+for param in ${STACK_PARAMETERS[@]}; do
+    if contains ${param} ${!PARAMS[@]}; then
+        PARAM_JSON+=",{\"ParameterKey\":\"${param}\",\"ParameterValue\":\"${PARAMS[$param]}\"}"
+    else
+        PARAM_JSON+=",{\"ParameterKey\":\"${param}\",\"UsePreviousValue\":true}"
+    fi
+done
+
+if prompt_no "Do you wish to update '${STACK_NAME}'?"; then
+    echoerr "INFO: Exiting on user request"
+    exit
+fi
+
+echoerr "INFO: Updating '${STACK_NAME}'"
+aws cloudformation update-stack \
+    --region ${AWS_REGION} \
+    --stack-name ${STACK_NAME} \
+    --parameters "[${PARAM_JSON#,}]" \
+    --use-previous-template \
+    --capabilities CAPABILITY_IAM
+

@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+#
+#
+#
+
+source $(dirname $0)/../moon.sh
+
+if [[ $# -lt 1 ]]; then
+    echoerr "Usage: $(basename $0) ENVIRONMENT"
+    exit
+else
+    export ENVIRONMENT=$1
+fi
+
+STACK_NAME="${APP_NAME}-${ENVIRONMENT}"
+START_SECONDS=$(date +%s)
+SLEEP_DELAY=15
+
+
+#
+# Handle template and parameter files
+#
+if [[ ! -f moonshot/template.yml ]]; then
+    echoerr "ERROR: Can not find 'moonshot/template.yml'"
+    exit 1
+fi
+
+stack_parameter_file_convert ${ENVIRONMENT}
+
+declare -A PARAMS
+
+PARAM_FILE=$(stack_parameter_file ${ENVIRONMENT})
+
+stack_parameter_file_convert ${ENVIRONMENT}
+
+
+#
+# Check for existing stack and a valid template
+#
+# see `aws cloudformation list-stacks help` for a list of statuses
+VALID_STATUSES=(DELETE_COMPLETE)
+
+if aws cloudformation describe-stacks --region ${AWS_REGION} --stack-name ${STACK_NAME} &>/dev/null; then
+    STACK_STATUS=$(stack_status ${STACK_NAME})
+
+    if [[ ${STACK_STATUS-} ]]; then
+        if contains ${STACK_STATUS} ${VALID_STATUSES[@]}; then
+            echoerr "WARNING: Stack found, but in status '${STACK_STATUS}', continuing"
+        else
+            echoerr "ERROR: Stack '${STACK_NAME}' is already created and is in state '${STACK_STATUS}'"
+            echoerr "INFO: Use 'stack-update' or 'stack-upgrade' instead"
+            exit 1
+        fi
+    fi
+fi
+
+# This will exit non-zero if there are issues
+echoerr "INFO: Validating template"
+aws cloudformation validate-template \
+    --region ${AWS_REGION} \
+    --template-body file://moonshot/template.yml &>/dev/null
+
+
+#
+# Parse parameters and create stack
+#
+if [[ ${PARAM_FILE} ]]; then
+    echoerr "INFO: Parsing ${PARAM_FILE}"
+    stack_parameter_file_parse ${PARAM_FILE} PARAMS
+fi
+
+echoerr "INFO: Parsing parameters"
+for param in ${!PARAMS[@]}; do
+    PARAM_JSON+=",{\"ParameterKey\":\"${param}\",\"ParameterValue\":\"${PARAMS[$param]}\"}"
+done
+
+if prompt_no "Do you wish to create the '${STACK_NAME}' stack in the '${AWS_ACCOUNT_NAME}' account?"; then
+    echoerr "INFO: Exiting on user request"
+    exit
+fi
+
+echoerr "INFO: Creating  '${STACK_NAME}'"
+STACK_ID=$(aws cloudformation create-stack \
+    --region ${AWS_REGION} \
+    --stack-name ${STACK_NAME} \
+    --parameters "[${PARAM_JSON#,}]" \
+    --template-body file://moonshot/template.yml \
+    --capabilities CAPABILITY_IAM \
+    --query "StackId" \
+    --output text \
+    2>&1 \
+    | sed -e '/^$/d')
+
+if [[ -z ${STACK_ID-} ]]; then
+    echoerr "ERROR: create-stack failed to return a stack ID"
+    echoerr "INFO: Run 'DEBUG=true $(basename $0)' for mor output"
+    exit 1
+elif [[ ! ${STACK_ID} =~ ^arn ]]; then
+    echoerr "ERROR: Failed to create stack"
+    echoerr "INFO: Returned message: '${STACK_ID}'"
+    exit 1
+fi
+
+echoerr "INFO: Waiting for stack create to complete for '${STACK_NAME}'"
+aws cloudformation wait stack-create-complete \
+    --region ${AWS_REGION} \
+    --stack-name ${STACK_NAME} \
+    &>/dev/null &
+
+WAIT_PID=$!
+
+until ! kill -s 0 ${WAIT_PID} &>/dev/null; do
+    STACK_STATUS=$(stack_status ${STACK_NAME})
+    echoerr "INFO: Stack status: ${STACK_STATUS}"
+    sleep ${SLEEP_DELAY}
+done
+
+
+#
+# Validate stack post create
+#
+STACK_STATUS=$(stack_status_from_id ${STACK_ID})
+
+if ! contains ${STACK_STATUS} $(stack_status_ok); then
+    echoerr "ERROR: Stack '${STACK_NAME}' is in status '${STACK_STATUS}'"
+    exit 1
+else
+    echoerr "INFO: Stack '${STACK_NAME}' is in status '${STACK_STATUS}'"
+fi
+
+echoerr "INFO: $(basename $0) completed in '$(($(date +%s) - ${START_SECONDS}))' seconds"
+

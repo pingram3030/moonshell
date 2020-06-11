@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+#
+#
+#
+
+source $(dirname $0)/../moon.sh
+
+if [[ $# -lt 1 ]]; then
+    echoerr "Usage: $(basename $0) ENVIRONMENT"
+    exit
+else
+    export ENVIRONMENT=$1
+fi
+
+STACK_NAME="${APP_NAME}-${ENVIRONMENT}"
+SLEEP_DELAY=15
+
+if [[ ! -f moonshot/template.yml ]]; then
+    echoerr "ERROR: Can not find 'moonshot/template.yml'"
+    exit 1
+fi
+
+stack_parameter_file_convert ${ENVIRONMENT}
+
+declare -A PARAMS
+
+PARAM_FILE=$(stack_parameter_file ${ENVIRONMENT})
+
+stack_parameter_file_convert ${ENVIRONMENT}
+
+echoerr "INFO: Gathering existing parameters"
+STACK_PARAMETERS=($(aws cloudformation get-template-summary \
+    --region ${AWS_REGION} \
+    --stack-name ${STACK_NAME}  \
+    | jq -r '.Parameters[].ParameterKey'))
+
+if [[ ${PARAM_FILE} ]]; then
+    echoerr "INFO: Parsing ${PARAM_FILE}"
+    stack_parameter_file_parse ${PARAM_FILE} PARAMS
+fi
+
+echoerr "INFO: Parsing parameters"
+for param in ${STACK_PARAMETERS[@]}; do
+    if contains ${param} ${!PARAMS[@]}; then
+        PARAM_JSON+=",{\"ParameterKey\":\"${param}\",\"ParameterValue\":\"${PARAMS[$param]}\"}"
+    else
+        PARAM_JSON+=",{\"ParameterKey\":\"${param}\",\"UsePreviousValue\":true}"
+    fi
+done
+
+if prompt_no "Do you wish to update '${STACK_NAME}'?"; then
+    echoerr "INFO: Exiting on user request"
+    exit
+fi
+
+echoerr "INFO: Updating '${STACK_NAME}'"
+# If when updating a stack the uploaded template does not precipitate change,
+# then for some reason that's a failure, and it exits 255. We temporarily
+# enable pipe failures, so we can test the exit status of multiple commands.
+# We have to 'or true' because we are still running with 'set -e'
+set -o pipefail
+aws cloudformation update-stack \
+    --region ${AWS_REGION} \
+    --stack-name ${STACK_NAME} \
+    --parameters "[${PARAM_JSON#,}]" \
+    --template-body file://moonshot/template.yml \
+    --capabilities CAPABILITY_IAM \
+    2>&1 \
+    | grep -q 'No updates are to be performed' \
+    || true
+STATUS=(${PIPESTATUS[@]})
+set +o pipefail
+
+# If the first process exited 255
+# And the output from the command matched the very specific grep
+# Or the first process exited 0
+# Then, we're cool
+if [[ ${STATUS[0]} == 0 ]]; then
+    echoerr "INFO: Update triggered. Waiting for stack update to complete"
+elif [[ ${STATUS[0]} == 255 ]] && [[ ${STATUS[1]} == 0 ]]; then
+    echoerr "INFO: No updates are to be performed"
+    exit
+else
+    echoerr "ERROR: Failed to update stack '${STACK_NAME}'"
+    echoerr "INFO: Run with 'DEBUG=true' for more output"
+    exit ${STATUS[0]}
+fi
+
+
+echoerr "INFO: Waiting for stack update to complete"
+aws cloudformation wait \
+    stack-update-complete \
+    --region ${AWS_REGION} \
+    --stack-name ${STACK_NAME} \
+    &>/dev/null &
+
+WAIT_PID=$!
+
+until ! kill -s 0 ${WAIT_PID} &>/dev/null; do
+    STACK_STATUS=$(stack_status ${STACK_NAME})
+    echoerr "INFO: Stack status: ${STACK_STATUS}"
+    sleep ${SLEEP_DELAY}
+done
+
+echoerr "INFO: Stack update completed with status '$(stack_status ${STACK_NAME})'"
+

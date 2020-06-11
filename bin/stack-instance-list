@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#
+#
+#
+
+source $(dirname $0)/../moon.sh
+
+if [[ $# -lt 1 ]]; then
+    echoerr "Usage: $(basename $0) ENVIRONMENT"
+    exit
+else
+    export ENVIRONMENT=$1
+fi
+
+STACK_NAME="${APP_NAME}-${ENVIRONMENT}"
+
+AUTOSCALING_GROUPS=($(stack_resource_type_id ${STACK_NAME} "AWS::AutoScaling::AutoScalingGroup"))
+
+aws autoscaling describe-auto-scaling-groups \
+    --auto-scaling-group-names ${AUTOSCALING_GROUPS[@]} \
+    --query "AutoScalingGroups[].{
+        AutoScalingGroupName:AutoScalingGroupName,
+        MinSize:MinSize,
+        MaxSize:MaxSize,
+        DesiredCapacity:DesiredCapacity,
+        LoadBalancerNames:LoadBalancerNames,
+        Instances:Instances
+        }" \
+    --output table

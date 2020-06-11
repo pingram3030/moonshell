@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#
+#
+#
+
+source $(dirname $0)/../moon.sh
+
+if [[ $# -lt 1 ]]; then
+    echoerr "Usage: $(basename $0) ENVIRONMENT"
+    exit
+else
+    export ENVIRONMENT=$1
+fi
+
+STACK_NAME="${APP_NAME}-${ENVIRONMENT}"
+
+aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --query "Stacks[].{
+        CreationTime:CreationTime,
+        EnableTerminationProtection:EnableTerminationProtection,
+        Outputs:Outputs,
+        Parameters:Parameters,
+        StackName:StackName,
+        StackStatus:StackStatus
+        }" \
+    --output table
+
+stack-instance-list ${ENVIRONMENT}
+
