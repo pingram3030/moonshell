@@ -23,5 +23,5 @@ aws rds describe-db-log-files \
     --db-instance-identifier ${INSTANCE} \
     --query "DescribeDBLogFiles[] | sort_by([], &LastWritten)" \
     --output table \
-    --no-cli-pager
+    --no-paginate
 
