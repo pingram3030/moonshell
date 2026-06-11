@@ -10,7 +10,7 @@ if [[ $# -lt 1 ]]; then
     echoerr
     echoerr "Options:"
     echoerr "  -f   Log file for 'startswith' match. Default: enumerate all logs for user choice"
-    echoerr "  -o   Output file. Default: /tmp/\$STACK_NAME.slowlog"
+    echoerr "  -o   Output file. Default: /tmp/STACK_NAME.log"
     echoerr "  -r   Use the replica: Default: undefined"
     echoerr
     echoerr "Example:"
@@ -25,7 +25,7 @@ else
 fi
 
 stack_name
-OUT_FILE="/tmp/${STACK_NAME}.slowlog"
+OUT_FILE="/tmp/${STACK_NAME}.log"
 
 while getopts ':f:o:r' OPT; do
     case "${OPT}" in
