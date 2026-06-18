@@ -364,56 +364,6 @@ aws kms list-aliases
 * NOTE: You should specify a KMS key as the key UUID and not the alias, this is
     because IAM policy can only be set on a key's UUID.
 
-### SSH with a Jump Host / Bastion
-
-Connecting directly to your application servers via SSH is plain madness, poor
-practice and a violation of several security frameworks. Use a jump host!
-
-To get the most out of your jump host you should use either ProxyCommand
-or ProxyJump; for example, if you have foo bastion and use the bar.local and
-baz.local domains for your cloud servers:
-
-```
-Host bastion-foo
-  Hostname bastion-foo.example.com
-  StrictHostKeyChecking yes
-  ForwardX11 no
-
-host *.bar.local
-  ProxyJump bastion-foo
-
-host *.baz.local
-  ProxyCommand ssh bastion-foo nc -w 120s %h
-```
-
-Depending on the application you are hosting you may choose to have a dedicated
-and separated 'admin' node from where you can perform your needed admin
-functions; it's poor form to give your application nodes access to all the
-things if not strictly required. To this end Moonshell contains several
-'bastion' functions. These are to enable scripts to execute remotely for
-dumping/restoring of databases or what ever you may need.
-
-To make the most of this you either need to export a variable; this is
-prepended to the internal domain name of the stack:
-
-```
-export ADMIN_NODE_HOSTNAME=
-```
-
-Or, create a function which returns the FQDN of the admin node, for example:
-
-```
-ssh_target_hostname () {
-    local stack_name=$1
-
-    case ${stack_name} in
-        foo-*) echo "admin.${stack_name}.local" ;;
-        bar-dev) echo "admin.yolo-dev.local" ;;
-        *) echo "localhost" ;;
-    esac
-}
-```
-
 ### S3 Bucket
 
 Every stack which has an S3 bucket should have versioning enabled and be
