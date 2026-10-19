@@ -24,7 +24,7 @@ OUTPUT_FILE=$(mktemp -t $(basename $0)_${STACK_NAME}_.XXXXXX)
 TEMP_DIR=$(mktemp -p /tmp -d $(basename $0)_${STACK_NAME}_.XXXXXX)
 GIT_URL=$(git remote get-url origin)
 GIT_COMMIT=$(git rev-parse HEAD)
-S3_BUCKET=$(s3_stack_bucket_name ${STACK_NAME} 2>/dev/null)
+S3_BUCKET=$(s3_stack_bucket_name ${STACK_NAME} 2>/dev/null || true)
 DEPLOY_FILE="codedeploy/$(date +%s).tgz"
 
 if [[ -z ${S3_BUCKET-} ]]; then
