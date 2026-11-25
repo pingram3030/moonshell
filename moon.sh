@@ -136,7 +136,11 @@ if [[ ! $(basename "x$0") =~ "bash"$ ]]; then
     # AWS_REGION is required by the majority of AWS cli commands, so we should
     # set a default.
     if [[ -z ${AWS_REGION-} ]]; then
-        export AWS_REGION="ap-southeast-2"
+        if [[ ${AWS_DEFAULT_REGION-} ]]; then
+            export AWS_REGION=${AWS_DEFAULT_REGION}
+        else
+            export AWS_REGION="ap-southeast-2"
+        fi
     fi
 
     # Most scripts in bin/ build off of ${APP_NAME} which is programatically
